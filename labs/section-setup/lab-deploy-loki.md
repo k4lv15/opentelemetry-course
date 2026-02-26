@@ -116,7 +116,7 @@ In this lab, you'll:
    docker compose ps
 
    # Verify network connectivity
-   docker network inspect compose_observability
+   docker network inspect observability
    ```
 
 6. **Test Loki API**
@@ -169,7 +169,7 @@ In this lab, you'll:
 
 2. **LogQL Query Syntax:**
 
-   Ask: "Explain this LogQL query: `{job=\"webapp\"} |= \"error\" | json | level=\"ERROR\"`. What does each part do?"
+   Ask: "Explain this LogQL query: `{job="webapp"} |= "error" | json | level="ERROR"`. What does each part do?"
 
    **What to evaluate:** Does it explain the stream selector `{job="webapp"}`? Does it describe `|=` as a line filter (grep)? Does it explain `| json` as a parser? Does it show how `level="ERROR"` filters parsed fields? Try variations of this query with your test logs.
 
