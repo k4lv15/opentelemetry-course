@@ -12,6 +12,12 @@ import type {
   TranslationSession,
 } from '../types.js';
 import { SUPPORTED_LANGUAGES } from '../types.js';
+import {
+  translationRequestsCounter,
+  jobsEnqueuedCounter,
+  requestDuration,
+  validationErrorsCounter,
+} from '../metrics';
 
 export interface TranslationRouterDeps {
   queueService: QueueService;
@@ -25,10 +31,12 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
   // POST /api/translate - Submit translation request
   router.post('/', async (req: Request, res: Response) => {
     try {
+      const start = Date.now();
       const body = req.body as TranslateRequest;
 
       // Validate text
       if (!body.text || typeof body.text !== 'string' || !body.text.trim()) {
+        validationErrorsCounter.add(1, { error_type: 'empty_text' });
         res.status(400).json({
           error: 'Text is required',
           details: 'Text must be a non-empty string',
@@ -41,6 +49,7 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
         !Array.isArray(body.targetLanguages) ||
         body.targetLanguages.length === 0
       ) {
+        validationErrorsCounter.add(1, { error_type: 'empty_languages' });
         res.status(400).json({
           error: 'At least one target language is required',
           details: 'targetLanguages must be a non-empty array',
@@ -50,6 +59,7 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
 
       // Check max languages
       if (body.targetLanguages.length > 3) {
+        validationErrorsCounter.add(1, { error_type: 'too_many_languages' });
         res.status(400).json({
           error: 'Maximum 3 target languages allowed',
           details: `You requested ${body.targetLanguages.length} languages`,
@@ -63,6 +73,7 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
       );
 
       if (unsupportedLanguages.length > 0) {
+        validationErrorsCounter.add(1, { error_type: 'invalid_languages' });
         res.status(400).json({
           error: `Unsupported language: ${unsupportedLanguages.join(', ')}`,
           supportedLanguages: [...SUPPORTED_LANGUAGES],
@@ -73,6 +84,11 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
       // Create session
       const sessionId = uuidv4();
       const jobs = new Map<string, JobStatus>();
+
+      translationRequestsCounter.add(1, {
+        status: 'success',
+        language_count: body.targetLanguages.length.toString(),
+      });
 
       // Create and enqueue jobs
       const jobsList: TranslationJob[] = [];
@@ -93,6 +109,7 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
 
         // Enqueue job
         await queueService.enqueueJob(job);
+        jobsEnqueuedCounter.add(1, { target_language: targetLanguage });
       }
 
       // Save session
@@ -120,6 +137,9 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
       console.log(
         `Created translation session ${sessionId} with ${jobsList.length} jobs`,
       );
+      requestDuration.record(Date.now() - start, {
+        target_language_count: body.targetLanguages.length.toString(),
+      });
       res.status(201).json(response);
     } catch (error) {
       console.error('Error creating translation session:', error);
