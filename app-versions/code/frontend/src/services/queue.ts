@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { logger } from '../logger';
 import type {
   TranslationJob,
   TranslationResult,
@@ -47,7 +48,10 @@ export class QueueService {
     // Wait for connections
     await Promise.all([this.client.ping(), this.subscriber.ping()]);
 
-    console.log('QueueService connected to Redis');
+    logger.info('QueueService connected to Redis', {
+      host: this.config.host,
+      port: this.config.port,
+    });
   }
 
   async enqueueJob(job: TranslationJob): Promise<void> {
@@ -56,7 +60,10 @@ export class QueueService {
     }
     const jobJson = JSON.stringify(job);
     await this.client.lpush(this.queueKey, jobJson);
-    console.log(`Enqueued job ${job.jobId} for language ${job.targetLanguage}`);
+    logger.info('Job enqueued', {
+      jobId: job.jobId,
+      targetLanguage: job.targetLanguage,
+    });
   }
 
   async subscribeToResults(
@@ -74,12 +81,17 @@ export class QueueService {
           const result = JSON.parse(message) as TranslationResult;
           callback(result);
         } catch (error) {
-          console.error('Error parsing result message:', error);
+          logger.error('Error parsing result message', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+          });
         }
       }
     });
 
-    console.log(`Subscribed to ${this.resultChannel}`);
+    logger.info('Subscribed to results channel', {
+      channel: this.resultChannel,
+    });
   }
 
   async saveSession(session: TranslationSession): Promise<void> {
@@ -104,7 +116,7 @@ export class QueueService {
     await this.client.hset(key, sessionData);
     await this.client.expire(key, 3600); // 1 hour TTL
 
-    console.log(`Saved session ${session.sessionId}`);
+    logger.info('Session saved', { sessionId: session.sessionId });
   }
 
   async getSession(sessionId: string): Promise<TranslationSession | null> {
@@ -185,9 +197,7 @@ export class QueueService {
       await this.client.hset(key, 'status', 'in_progress');
     }
 
-    console.log(
-      `Updated job status: session=${sessionId}, lang=${language}, status=${status}`,
-    );
+    logger.info('Job status updated', { sessionId, language, status });
   }
 
   async disconnect(): Promise<void> {
@@ -199,6 +209,6 @@ export class QueueService {
       await this.client.quit();
       this.client = null;
     }
-    console.log('QueueService disconnected');
+    logger.info('QueueService disconnected');
   }
 }

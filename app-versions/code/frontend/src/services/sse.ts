@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { logger } from '../logger';
 
 export interface SSEConnection {
   res: Response;
@@ -33,7 +34,7 @@ export class SSEManager {
       this.removeConnection(sessionId, res);
     });
 
-    console.log(`SSE connection added for session ${sessionId}`);
+    logger.info('SSE connection added', { sessionId });
   }
 
   sendEvent(sessionId: string, event: string, data: unknown): void {
@@ -51,14 +52,19 @@ export class SSEManager {
       try {
         res.write(message);
       } catch (error) {
-        console.error('Error writing to SSE connection:', error);
+        logger.error('Error writing to SSE connection', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
+        });
         this.removeConnection(sessionId, res);
       }
     }
 
-    console.log(
-      `Sent ${event} event to ${connections.size} connection(s) for session ${sessionId}`,
-    );
+    logger.info('SSE event sent', {
+      sessionId,
+      event,
+      connectionCount: connections.size,
+    });
   }
 
   removeConnection(sessionId: string, res: Response): void {
@@ -71,7 +77,7 @@ export class SSEManager {
         this.connections.delete(sessionId);
       }
 
-      console.log(`SSE connection removed for session ${sessionId}`);
+      logger.info('SSE connection removed', { sessionId });
     }
 
     // Close the response if not already closed
@@ -94,7 +100,7 @@ export class SSEManager {
         }
       }
       this.connections.delete(sessionId);
-      console.log(`Closed all SSE connections for session ${sessionId}`);
+      logger.info('Closed all SSE connections for session', { sessionId });
     }
   }
 
@@ -107,6 +113,6 @@ export class SSEManager {
       }
     }
     this.connections.clear();
-    console.log('Closed all SSE connections');
+    logger.info('Closed all SSE connections');
   }
 }

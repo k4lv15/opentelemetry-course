@@ -91,7 +91,7 @@ sdk.start();
 Add the logger import at the top of `src/routes/translation.ts`:
 
 ```typescript
-import { logger } from '../logger.js';
+import { logger } from '../logger';
 ```
 
 Then replace the `console.log` / `console.error` calls:

@@ -20,6 +20,7 @@ import {
   validationErrorsCounter,
 } from '../metrics';
 import { setSpanError, tracer } from '../tracers';
+import { logger } from '../logger';
 
 interface ValidationErrorBody {
   error: string;
@@ -237,9 +238,11 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
             })),
           };
 
-          console.log(
-            `Created translation session ${sessionId} with ${jobsList.length} jobs`,
-          );
+          logger.info('Translation session created', {
+            sessionId,
+            jobCount: jobsList.length,
+            targetLanguages: body.targetLanguages,
+          });
           requestDuration.record(Date.now() - start, {
             target_language_count: body.targetLanguages.length.toString(),
           });
@@ -247,7 +250,10 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
           res.status(201).json(response);
         } catch (error) {
           setSpanError(sessionSpan, error);
-          console.error('Error creating translation session:', error);
+          logger.error('Error creating translation session', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+          });
           res.status(500).json({
             error: 'Internal server error',
             details: error instanceof Error ? error.message : 'Unknown error',
@@ -286,7 +292,10 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
 
       res.json(response);
     } catch (error) {
-      console.error('Error fetching session:', error);
+      logger.error('Error fetching session', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({
         error: 'Internal server error',
         details: error instanceof Error ? error.message : 'Unknown error',
@@ -310,9 +319,12 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
       // Add SSE connection
       sseManager.addConnection(sessionId, res);
 
-      console.log(`Client connected to SSE for session ${sessionId}`);
+      logger.info('Client connected to SSE', { sessionId });
     } catch (error) {
-      console.error('Error establishing SSE connection:', error);
+      logger.error('Error establishing SSE connection', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({
         error: 'Internal server error',
         details: error instanceof Error ? error.message : 'Unknown error',
