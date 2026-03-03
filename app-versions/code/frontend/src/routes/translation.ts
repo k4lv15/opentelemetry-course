@@ -19,7 +19,86 @@ import {
   requestDuration,
   validationErrorsCounter,
 } from '../metrics';
-import { tracer } from '../tracers';
+import { setSpanError, tracer } from '../tracers';
+
+interface ValidationErrorBody {
+  error: string;
+  details?: string;
+}
+
+enum VALIDATION_ERROR_TYPES {
+  EMPTY_STRING = 'empty_text',
+  EMPTY_LANGUAGES = 'empty_languages',
+  TOO_MANY_LANGUAGES = 'too_many_languages',
+  INVALID_LANGUAGES = 'invalid_languages',
+}
+
+interface ValidationError {
+  statusCode: number;
+  body: ValidationErrorBody;
+  errorType: VALIDATION_ERROR_TYPES;
+  spanMessage: string;
+}
+
+function validateTranslationRequest(
+  text: unknown,
+  targetLanguages: unknown,
+): ValidationError | null {
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return {
+      statusCode: 400,
+      body: {
+        error: 'Text is required',
+        details: 'Text must be a non-empty string',
+      },
+      errorType: VALIDATION_ERROR_TYPES.EMPTY_STRING,
+      spanMessage: 'Empty text',
+    };
+  }
+
+  if (!Array.isArray(targetLanguages) || targetLanguages.length === 0) {
+    return {
+      statusCode: 400,
+      body: {
+        error: 'At least one target language is required',
+        details: 'targetLanguages must be a non-empty array',
+      },
+      errorType: VALIDATION_ERROR_TYPES.EMPTY_LANGUAGES,
+      spanMessage: 'Empty languages',
+    };
+  }
+
+  if (targetLanguages.length > 3) {
+    return {
+      statusCode: 400,
+      body: {
+        error: 'Maximum 3 target languages allowed',
+        details: `You requested ${targetLanguages.length} languages`,
+      },
+      errorType: VALIDATION_ERROR_TYPES.TOO_MANY_LANGUAGES,
+      spanMessage: 'Too many languages',
+    };
+  }
+
+  // Validate each language
+  const unsupportedLanguages = targetLanguages.filter(
+    (lang) => !SUPPORTED_LANGUAGES.includes(lang as any),
+  );
+
+  if (unsupportedLanguages.length > 0) {
+    return {
+      statusCode: 400,
+      body: {
+        error: `Unsupported language: ${unsupportedLanguages.join(', ')}`,
+        details: `Supported languages: ${[...SUPPORTED_LANGUAGES].join(', ')}`,
+      },
+      errorType: VALIDATION_ERROR_TYPES.INVALID_LANGUAGES,
+      spanMessage: 'Invalid languages',
+    };
+  }
+
+  return null;
+}
 
 export interface TranslationRouterDeps {
   queueService: QueueService;
@@ -51,88 +130,40 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
             targetLanguages.join(','),
           );
 
-          await tracer.startActiveSpan(
+          const isValid = await tracer.startActiveSpan(
             'validate_request',
             async (validationSpan) => {
               try {
-                // Validate text
-                if (!text || typeof text !== 'string' || !text.trim()) {
-                  validationErrorsCounter.add(1, { error_type: 'empty_text' });
-                  validationSpan.setStatus({
-                    code: SpanStatusCode.ERROR,
-                    message: 'Empty text',
-                  });
-                  validationSpan.end();
-                  res.status(400).json({
-                    error: 'Text is required',
-                    details: 'Text must be a non-empty string',
-                  });
-                  return;
-                }
-
-                // Validate targetLanguages
-                if (
-                  !Array.isArray(targetLanguages) ||
-                  targetLanguages.length === 0
-                ) {
-                  validationErrorsCounter.add(1, {
-                    error_type: 'empty_languages',
-                  });
-                  validationSpan.setStatus({
-                    code: SpanStatusCode.ERROR,
-                    message: 'Empty languages',
-                  });
-                  validationSpan.end();
-                  res.status(400).json({
-                    error: 'At least one target language is required',
-                    details: 'targetLanguages must be a non-empty array',
-                  });
-                  return;
-                }
-
-                // Check max languages
-                if (targetLanguages.length > 3) {
-                  validationErrorsCounter.add(1, {
-                    error_type: 'too_many_languages',
-                  });
-                  validationSpan.setStatus({
-                    code: SpanStatusCode.ERROR,
-                    message: 'Too many languages',
-                  });
-                  validationSpan.end();
-                  res.status(400).json({
-                    error: 'Maximum 3 target languages allowed',
-                    details: `You requested ${targetLanguages.length} languages`,
-                  });
-                  return;
-                }
-
-                // Validate each language
-                const unsupportedLanguages = targetLanguages.filter(
-                  (lang) => !SUPPORTED_LANGUAGES.includes(lang as any),
+                const validationError = validateTranslationRequest(
+                  text,
+                  targetLanguages,
                 );
 
-                if (unsupportedLanguages.length > 0) {
+                if (validationError) {
                   validationErrorsCounter.add(1, {
-                    error_type: 'invalid_languages',
+                    error_type: validationError.errorType,
                   });
-                  validationSpan.setStatus({
-                    code: SpanStatusCode.ERROR,
-                    message: 'Invalid languages',
-                  });
-                  validationSpan.end();
-                  res.status(400).json({
-                    error: `Unsupported language: ${unsupportedLanguages.join(', ')}`,
-                    supportedLanguages: [...SUPPORTED_LANGUAGES],
-                  });
-                  return;
+                  setSpanError(
+                    validationSpan,
+                    new Error(validationError.spanMessage),
+                  );
+                  res
+                    .status(validationError.statusCode)
+                    .json(validationError.body);
+                  return false;
                 }
+
                 validationSpan.setStatus({ code: SpanStatusCode.OK });
+                return true;
               } finally {
                 validationSpan.end();
               }
             },
           );
+
+          if (!isValid) {
+            return;
+          }
 
           // Create session
           const sessionId = uuidv4();
@@ -176,12 +207,7 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
                 }
                 enqueueSpan.setStatus({ code: SpanStatusCode.OK });
               } catch (error) {
-                enqueueSpan.recordException(error as Error);
-                enqueueSpan.setStatus({
-                  code: SpanStatusCode.ERROR,
-                  message:
-                    error instanceof Error ? error.message : 'Unknown error',
-                });
+                setSpanError(enqueueSpan, error);
                 throw error;
               } finally {
                 enqueueSpan.end();
@@ -220,11 +246,7 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
           sessionSpan.setStatus({ code: SpanStatusCode.OK });
           res.status(201).json(response);
         } catch (error) {
-          sessionSpan.recordException(error as Error);
-          sessionSpan.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error instanceof Error ? error.message : 'Unknown error',
-          });
+          setSpanError(sessionSpan, error);
           console.error('Error creating translation session:', error);
           res.status(500).json({
             error: 'Internal server error',
