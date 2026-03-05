@@ -12,3 +12,4 @@ This section covers instrumenting a single application with OpenTelemetry, progr
 8. [Lab: Logs - Auto-Instrumentation](lab-logs-auto.md)
 9. [Lab: Logs - Manual Instrumentation](lab-logs-manual.md)
 10. [Lab: Log-to-Trace Correlation](lab-logs-traces-correlation.md)
+11. [Lab: Frontend Instrumentation Refactoring](lab-frontend-refactorings.md)
