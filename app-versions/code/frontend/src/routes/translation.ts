@@ -144,6 +144,10 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
                   validationErrorsCounter.add(1, {
                     error_type: validationError.errorType,
                   });
+                  logger.warn('Validation failed', {
+                    reason: validationError.errorType,
+                    ip: req.ip,
+                  });
                   setSpanError(
                     validationSpan,
                     new Error(validationError.spanMessage),
@@ -169,6 +173,13 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
           // Create session
           const sessionId = uuidv4();
           sessionSpan.setAttribute('translation.session_id', sessionId);
+
+          logger.info('Translation session created', {
+            session_id: sessionId,
+            text_length: text.length,
+            target_languages: targetLanguages,
+            language_count: targetLanguages.length,
+          });
 
           const jobs = new Map<string, JobStatus>();
           const jobsList: TranslationJob[] = [];
@@ -205,6 +216,13 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
                   jobsEnqueuedCounter.add(1, {
                     target_language: targetLanguage,
                   });
+
+                  logger.info('Translation job enqueued', {
+                    job_id: jobId,
+                    session_id: sessionId,
+                    target_language: targetLanguage,
+                    queue: 'translation_queue',
+                  });
                 }
                 enqueueSpan.setStatus({ code: SpanStatusCode.OK });
               } catch (error) {
@@ -238,10 +256,10 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
             })),
           };
 
-          logger.info('Translation session created', {
-            sessionId,
-            jobCount: jobsList.length,
-            targetLanguages: body.targetLanguages,
+          logger.info('Translation session ready', {
+            session_id: sessionId,
+            jobs_count: jobsList.length,
+            status: 'queued',
           });
           requestDuration.record(Date.now() - start, {
             target_language_count: body.targetLanguages.length.toString(),
@@ -319,7 +337,10 @@ export function createTranslationRouter(deps: TranslationRouterDeps): Router {
       // Add SSE connection
       sseManager.addConnection(sessionId, res);
 
-      logger.info('Client connected to SSE', { sessionId });
+      logger.info('SSE connection established', {
+        session_id: sessionId,
+        ip: req.ip,
+      });
     } catch (error) {
       logger.error('Error establishing SSE connection', {
         error: error instanceof Error ? error.message : 'Unknown error',

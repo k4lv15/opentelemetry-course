@@ -34,13 +34,18 @@ export class SSEManager {
       this.removeConnection(sessionId, res);
     });
 
-    logger.info('SSE connection added', { sessionId });
+    const connection_count = this.connections.get(sessionId)!.size;
+    logger.info('SSE connection added', { session_id: sessionId, connection_count });
   }
 
   sendEvent(sessionId: string, event: string, data: unknown): void {
     const connections = this.connections.get(sessionId);
 
     if (!connections || connections.size === 0) {
+      logger.warn('SSE event dropped: no active connections for session', {
+        session_id: sessionId,
+        event,
+      });
       return;
     }
 
@@ -61,9 +66,9 @@ export class SSEManager {
     }
 
     logger.info('SSE event sent', {
-      sessionId,
+      session_id: sessionId,
       event,
-      connectionCount: connections.size,
+      connection_count: connections.size,
     });
   }
 
@@ -77,7 +82,10 @@ export class SSEManager {
         this.connections.delete(sessionId);
       }
 
-      logger.info('SSE connection removed', { sessionId });
+      logger.info('SSE connection removed', {
+        session_id: sessionId,
+        remaining_connections: connections.size,
+      });
     }
 
     // Close the response if not already closed
@@ -94,13 +102,17 @@ export class SSEManager {
     const connections = this.connections.get(sessionId);
 
     if (connections) {
+      const connection_count = connections.size;
       for (const res of connections) {
         if (!res.writableEnded) {
           res.end();
         }
       }
       this.connections.delete(sessionId);
-      logger.info('Closed all SSE connections for session', { sessionId });
+      logger.info('Closed all SSE connections for session', {
+        session_id: sessionId,
+        connection_count,
+      });
     }
   }
 

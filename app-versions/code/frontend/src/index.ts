@@ -43,11 +43,21 @@ async function startServer(): Promise<void> {
 
     // Subscribe to translation results
     await queueService.subscribeToResults(async (result: TranslationResult) => {
-      logger.info('Received translation result', {
-        jobId: result.jobId,
-        sessionId: result.sessionId,
+      logger.info('Translation result received', {
+        job_id: result.jobId,
+        session_id: result.sessionId,
+        target_language: result.targetLanguage,
         status: result.status,
       });
+
+      if (result.status === 'error') {
+        logger.error('Translation job failed', {
+          job_id: result.jobId,
+          session_id: result.sessionId,
+          target_language: result.targetLanguage,
+          error: result.error,
+        });
+      }
 
       try {
         // Update session in Redis
@@ -72,6 +82,10 @@ async function startServer(): Promise<void> {
         if (session && session.status === 'completed') {
           sseManager!.sendEvent(result.sessionId, 'session_complete', {
             sessionId: result.sessionId,
+            status: 'completed',
+          });
+          logger.info('Translation session completed', {
+            session_id: result.sessionId,
             status: 'completed',
           });
         }
