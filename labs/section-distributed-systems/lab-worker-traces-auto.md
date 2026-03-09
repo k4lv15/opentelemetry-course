@@ -66,7 +66,7 @@ def setup_instrumentation() -> None:
 ```
 
 > **Why does the trace pipeline enable Redis spans automatically?**
-> `RedisInstrumentor().instrument()` checks for a configured `TracerProvider` when patching the Redis client. Now that a real provider is set, every Redis command creates a span. Previously only metrics were produced.
+> `RedisInstrumentor().instrument()` checks for a configured `TracerProvider` when patching the Redis client. Now that a real provider is set, every Redis command creates a span.
 
 **2. Deploy**
 
