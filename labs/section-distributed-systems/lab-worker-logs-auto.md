@@ -22,6 +22,7 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.redis import RedisInstrumentor
+from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 
 # After (add these imports):
 from opentelemetry import metrics

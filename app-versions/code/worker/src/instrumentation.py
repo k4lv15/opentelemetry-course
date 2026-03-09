@@ -9,28 +9,21 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+
 logger = logging.getLogger(__name__)
 
 
 def setup_instrumentation() -> None:
     """Configure OpenTelemetry metrics pipeline."""
-    resource = Resource(
-        {
-            "service.name": os.getenv("OTEL_SERVICE_NAME", "translation-worker"),
-        }
-    )
-
-    otlp_endpoint = os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318"
-    )
+    resource = Resource.create()
 
     metric_reader = PeriodicExportingMetricReader(
-        exporter=OTLPMetricExporter(
-            endpoint=f"{otlp_endpoint}/v1/metrics",
-        ),
-        export_interval_millis=int(
-            os.getenv("OTEL_METRIC_EXPORT_INTERVAL_MS", "10000")
-        ),
+        exporter=OTLPMetricExporter(),
+        export_interval_millis=int(os.getenv("OTEL_METRIC_EXPORT_INTERVAL", "10000")),
     )
 
     meter_provider = MeterProvider(
@@ -38,6 +31,17 @@ def setup_instrumentation() -> None:
         metric_readers=[metric_reader],
     )
     metrics.set_meter_provider(meter_provider)
+
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
+
+    set_logger_provider(logger_provider)
+
+    # Attach OTel handler to Python root logger.
+    # This exports all log records via OTLP and injects trace_id/span_id automatically
+    # when the log is emitted inside an active span.
+    handler = LoggingHandler(logger_provider=logger_provider)
+    logging.getLogger().addHandler(handler)
 
     # Auto-instrument Redis client — patches redis-py to create spans for every Redis command.
     # Note: the Python RedisInstrumentor produces traces only, not metrics.
