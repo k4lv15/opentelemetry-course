@@ -157,16 +157,16 @@ curl -X POST http://localhost:3001/api/translate \
 Open Prometheus at http://localhost:9090 and run:
 
 ```promql
-system_cpu_time_seconds_total{service_name="translation-worker"}
+system_cpu_time_seconds_total{exported_job="translation-worker"}
 ```
 
 Also try:
 
 ```promql
-process_runtime_cpython_memory_bytes{service_name="translation-worker"}
+process_runtime_cpython_memory_bytes{exported_job="translation-worker"}
 ```
 
-Expected: series labelled `service_name="translation-worker"` with non-zero values.
+Expected: series labelled `exported_job="translation-worker"` with non-zero values.
 
 Also verify the worker appears in the Prometheus targets list at http://localhost:9090/targets (it exports via the OTel Collector scrape endpoint).
 

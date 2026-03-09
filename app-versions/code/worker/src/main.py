@@ -8,6 +8,7 @@ from typing import Optional
 from .config import Config
 from .queue import QueueConsumer
 from .translator import Translator
+from .instrumentation import setup_instrumentation
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +37,8 @@ def main() -> None:
     # Register signal handlers
     signal.signal(signal.SIGTERM, handle_shutdown)
     signal.signal(signal.SIGINT, handle_shutdown)
+
+    setup_instrumentation()
 
     # Load configuration
     config = Config.from_env()
