@@ -5,6 +5,7 @@ export interface TranslationJob {
   sourceLanguage: string;
   targetLanguage: string;
   createdAt: string;
+  _traceContext?: Record<string, string>;
 }
 
 export interface TranslationResult {

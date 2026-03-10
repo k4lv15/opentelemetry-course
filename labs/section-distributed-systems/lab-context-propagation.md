@@ -164,7 +164,7 @@ with tracer.start_as_current_span(
         if target_lang not in config.supported_languages:
             error_msg = f"Unsupported target language: {target_lang}"
             logger.error(error_msg)
-            span.set_status(trace.status.Status(StatusCode.ERROR, error_msg))
+            span.set_status(trace.Status(StatusCode.ERROR, error_msg))
             result = {
                 "jobId": job_id,
                 "sessionId": session_id,

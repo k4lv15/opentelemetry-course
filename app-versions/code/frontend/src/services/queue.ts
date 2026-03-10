@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { propagation, context } from '@opentelemetry/api';
 import { logger } from '../logger';
 import type {
   TranslationJob,
@@ -84,7 +85,11 @@ export class QueueService {
     if (!this.client) {
       throw new Error('QueueService not connected');
     }
-    const jobJson = JSON.stringify(job);
+
+    const _traceContext: Record<string, string> = {};
+    propagation.inject(context.active(), _traceContext);
+
+    const jobJson = JSON.stringify({ ...job, _traceContext: _traceContext });
     await this.client.lpush(this.queueKey, jobJson);
     logger.info('Job enqueued', {
       job_id: job.jobId,

@@ -4,6 +4,8 @@ import logging
 import time
 import random
 from datetime import datetime, timezone
+from opentelemetry import trace, propagate
+from opentelemetry.trace import SpanKind, StatusCode
 from typing import Optional
 from .config import Config
 from .queue import QueueConsumer
@@ -18,6 +20,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 # Global shutdown flag
 shutdown_flag = False
@@ -80,82 +83,110 @@ def main() -> None:
                     continue
 
                 # Extract job details
-                job_id = job.get("jobId")
-                session_id = job.get("sessionId")
+                job_id = job.get("jobId", "")
+                session_id = job.get("sessionId", "")
                 text = job.get("text")
                 source_lang = job.get("sourceLanguage", config.source_language)
-                target_lang = job.get("targetLanguage")
+                target_lang = job.get("targetLanguage", "")
 
                 if not all([job_id, session_id, text, target_lang]):
                     logger.error(f"Invalid job data: {job}")
                     continue
 
-                # Validate target language
-                if target_lang not in config.supported_languages:
-                    error_msg = f"Unsupported target language: {target_lang}"
-                    logger.error(error_msg)
+                # Extract remote trace context from the job payload.
+                # propagate.extract() reads the W3C traceparent value injected by the frontend.
+                # If "_traceContext" is absent or malformed, extract() returns a background context
+                # — no exception is thrown. The worker will simply start a new root span instead of
+                # a child span, so traces won't be connected but processing continues normally.
+                remote_ctx = propagate.extract(job.get("_traceContext", {}))
 
-                    result = {
-                        "jobId": job_id,
-                        "sessionId": session_id,
-                        "targetLanguage": target_lang,
-                        "status": "error",
-                        "error": error_msg,
-                        "durationMs": 0,
-                        "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
-                    }
-                    queue_consumer.publish_result(result)
-                    continue
+                with tracer.start_as_current_span(
+                    "process_translation_job",
+                    context=remote_ctx,
+                    kind=SpanKind.CONSUMER,
+                    attributes={
+                        "translation.job_id": job_id,
+                        "translation.session_id": session_id,
+                        "translation.target_language": target_lang,
+                        "translation.text_length": len(text) if text else 0,
+                    },
+                ) as span:
+                    # Validate target language
+                    if target_lang not in config.supported_languages:
+                        error_msg = f"Unsupported target language: {target_lang}"
+                        span.set_status(trace.Status(StatusCode.ERROR, error_msg))
+                        logger.error(error_msg)
 
-                # Translate
-                logger.info(f"Processing job {job_id}: {source_lang} -> {target_lang}")
-                start_time = time.time()
+                        result = {
+                            "jobId": job_id,
+                            "sessionId": session_id,
+                            "targetLanguage": target_lang,
+                            "status": "error",
+                            "error": error_msg,
+                            "durationMs": 0,
+                            "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
+                        }
+                        queue_consumer.publish_result(result)
+                        continue
 
-                try:
-                    # Simulate realistic API latency (0.5-2 seconds)
-                    delay = random.uniform(0.5, 2.0)
-                    logger.debug(f"Simulating {delay:.2f}s translation latency")
-                    time.sleep(delay)
-
-                    # Ensure text is not None (already validated above)
-                    assert text is not None, "Text should not be None"
-                    translated_text = translator.translate(
-                        text, source_lang, target_lang
-                    )
-                    duration_ms = int((time.time() - start_time) * 1000)
-
-                    result = {
-                        "jobId": job_id,
-                        "sessionId": session_id,
-                        "targetLanguage": target_lang,
-                        "translatedText": translated_text,
-                        "status": "completed",
-                        "durationMs": duration_ms,
-                        "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
-                    }
-
+                    # Translate
                     logger.info(
-                        f"Job {job_id} completed successfully in {duration_ms}ms"
+                        f"Processing job {job_id}: {source_lang} -> {target_lang}"
                     )
+                    start_time = time.time()
 
-                except Exception as e:
-                    duration_ms = int((time.time() - start_time) * 1000)
-                    error_msg = str(e)
+                    try:
+                        # Simulate realistic API latency (0.5-2 seconds)
+                        delay = random.uniform(0.5, 2.0)
+                        logger.debug(f"Simulating {delay:.2f}s translation latency")
+                        time.sleep(delay)
 
-                    logger.error(f"Translation failed for job {job_id}: {error_msg}")
+                        # Ensure text is not None (already validated above)
+                        assert text is not None, "Text should not be None"
+                        translated_text = translator.translate(
+                            text, source_lang, target_lang
+                        )
+                        duration_ms = int((time.time() - start_time) * 1000)
 
-                    result = {
-                        "jobId": job_id,
-                        "sessionId": session_id,
-                        "targetLanguage": target_lang,
-                        "status": "error",
-                        "error": error_msg,
-                        "durationMs": duration_ms,
-                        "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
-                    }
+                        span.set_attribute("translation.duration_ms", duration_ms)
 
-                # Publish result
-                queue_consumer.publish_result(result)
+                        result = {
+                            "jobId": job_id,
+                            "sessionId": session_id,
+                            "targetLanguage": target_lang,
+                            "translatedText": translated_text,
+                            "status": "completed",
+                            "durationMs": duration_ms,
+                            "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
+                        }
+
+                        logger.info(
+                            f"Job {job_id} completed successfully in {duration_ms}ms"
+                        )
+
+                    except Exception as e:
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        error_msg = str(e)
+
+                        logger.error(
+                            f"Translation failed for job {job_id}: {error_msg}"
+                        )
+
+                        span.record_exception(e)
+                        span.set_status(trace.Status(StatusCode.ERROR, error_msg))
+
+                        result = {
+                            "jobId": job_id,
+                            "sessionId": session_id,
+                            "targetLanguage": target_lang,
+                            "status": "error",
+                            "error": error_msg,
+                            "durationMs": duration_ms,
+                            "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
+                        }
+
+                    # Publish result
+                    queue_consumer.publish_result(result)
 
             except KeyboardInterrupt:
                 logger.info("Received keyboard interrupt")
