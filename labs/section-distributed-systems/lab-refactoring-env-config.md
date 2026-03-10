@@ -1,8 +1,8 @@
-# Lab: Kubernetes-Ready Configuration
+# Lab: Refactoring - Environment-Driven Configuration
 
 ### 🎯 Lab Goal
 
-Eliminate every hardcoded value from both services so that all runtime configuration — including OTel collector endpoints, service names, Redis coordinates, and supported languages — can be supplied purely through environment variables. This is a prerequisite for Kubernetes deployment, where configuration is injected via `env` fields in Pod specs or `ConfigMap`/`Secret` references.
+Eliminate every hardcoded value from both services so that all runtime configuration — including OTel collector endpoints, service names, Redis coordinates, and supported languages — can be supplied purely through environment variables. This makes both services portable across any deployment environment (Compose, Kubernetes, CI) without code changes.
 
 ### 📝 What You'll Learn
 
@@ -128,48 +128,6 @@ return cls(
 
 ---
 
-**4. Verify OTel env vars in `compose/compose.app.yaml`**
-
-Open `compose/compose.app.yaml` and confirm that both `OTEL_SERVICE_NAME` and `OTEL_EXPORTER_OTLP_ENDPOINT` are already set on both services:
-
-```yaml
-frontend:
-  environment:
-    - REDIS_HOST=redis
-    - REDIS_PORT=6379
-    - PORT=3000
-    - LOG_LEVEL=info
-    - SOURCE_LANGUAGE=en
-    - OTEL_SERVICE_NAME=translation-frontend
-    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-
-worker:
-  environment:
-    - REDIS_HOST=redis
-    - REDIS_PORT=6379
-    - LOG_LEVEL=info
-    - SOURCE_LANGUAGE=en
-    - OTEL_SERVICE_NAME=translation-worker
-    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-```
-
-Both `OTEL_SERVICE_NAME` and `OTEL_EXPORTER_OTLP_ENDPOINT` are required for the Compose environment. Since `instrumentation.ts` no longer has these values hardcoded, the service will fail to label its telemetry correctly without them. The worker has had them since Lab 1; the frontend received them together with the frontend refactoring.
-
----
-
-**5. Deploy and verify**
-
-The frontend change requires a container restart (TypeScript hot-reload recompiles the file); the worker picks it up via `watchmedo`. Either way, restart both to be sure:
-
-```bash
-cd compose/
-docker compose -f compose.dev.yaml up -d
-```
-
-Confirm OTel is still working by generating traffic and checking Tempo for `translation-frontend` traces.
-
----
-
 ### 🔑 Environment Variable Reference
 
 After this lab, every runtime value in both services is configurable via env vars:
@@ -188,15 +146,15 @@ After this lab, every runtime value in both services is configurable via env var
 
 **Worker:**
 
-| Variable                         | Default                      | Purpose                           |
-| -------------------------------- | ---------------------------- | --------------------------------- |
-| `OTEL_SERVICE_NAME`              | `translation-worker`         | Service name in all telemetry     |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`    | `http://otel-collector:4318` | OTel Collector base URL           |
-| `OTEL_METRIC_EXPORT_INTERVAL_MS` | `60000`                      | Metric flush interval (ms)        |
-| `REDIS_HOST`                     | `localhost`                  | Redis hostname                    |
-| `REDIS_PORT`                     | `6379`                       | Redis port                        |
-| `QUEUE_KEY`                      | `translation:queue`          | Redis list key for jobs           |
-| `RESULT_CHANNEL`                 | `translation:results`        | Redis pub/sub channel for results |
-| `SOURCE_LANGUAGE`                | `en`                         | Source language code              |
-| `SUPPORTED_LANGUAGES`            | `es,fr,de`                   | Comma-separated target languages  |
-| `LOG_LEVEL`                      | `info`                       | Python log level                  |
+| Variable                      | Default                      | Purpose                           |
+| ----------------------------- | ---------------------------- | --------------------------------- |
+| `OTEL_SERVICE_NAME`           | `translation-worker`         | Service name in all telemetry     |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector:4318` | OTel Collector base URL           |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `60000`                      | Metric flush interval (ms)        |
+| `REDIS_HOST`                  | `localhost`                  | Redis hostname                    |
+| `REDIS_PORT`                  | `6379`                       | Redis port                        |
+| `QUEUE_KEY`                   | `translation:queue`          | Redis list key for jobs           |
+| `RESULT_CHANNEL`              | `translation:results`        | Redis pub/sub channel for results |
+| `SOURCE_LANGUAGE`             | `en`                         | Source language code              |
+| `SUPPORTED_LANGUAGES`         | `es,fr,de`                   | Comma-separated target languages  |
+| `LOG_LEVEL`                   | `info`                       | Python log level                  |

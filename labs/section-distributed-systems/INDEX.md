@@ -24,3 +24,5 @@ Frontend POST /api/translate
 6. [Lab: Worker Metrics - Manual Instrumentation](lab-worker-metrics-manual.md)
 7. [Lab: Worker Traces - Manual Instrumentation](lab-worker-traces-manual.md)
 8. [Lab: Redis Metrics via Prometheus Exporter](lab-redis-metrics.md)
+9. [Lab: Refactoring - Environment-Driven Configuration](lab-refactoring-env-config.md)
+10. [Lab: Refactoring - Structured Logging in the Worker](lab-refactoring-structured-logs.md)
