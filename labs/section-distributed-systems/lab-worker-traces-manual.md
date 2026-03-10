@@ -42,19 +42,19 @@ def translate(self, text: str, source: str, target: str) -> str:
 
             if translation is None:
                 error_msg = f"Translation model not available for {source} -> {target}"
-                span.set_status(trace.status.Status(StatusCode.ERROR, error_msg))
+                span.set_status(trace.Status(StatusCode.ERROR, error_msg))
                 raise ValueError(error_msg)
 
             translated_text = translation.translate(text)
             span.set_attribute("translation.output_length", len(translated_text))
-            span.set_status(trace.status.Status(StatusCode.OK))
+            span.set_status(trace.Status(StatusCode.OK))
             return translated_text
 
         except ValueError:
             raise
         except Exception as e:
             span.record_exception(e)
-            span.set_status(trace.status.Status(StatusCode.ERROR, str(e)))
+            span.set_status(trace.Status(StatusCode.ERROR, str(e)))
             raise RuntimeError(f"Translation failed ({source} -> {target}): {e}") from e
 ```
 
