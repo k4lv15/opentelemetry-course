@@ -4,10 +4,17 @@ import { logger } from './logger';
 import cors from 'cors';
 import { join } from 'path';
 import type { Server } from 'http';
-import { QueueService } from './services/queue.js';
-import { SSEManager } from './services/sse.js';
-import { createTranslationRouter } from './routes/translation.js';
-import type { TranslationResult } from './types.js';
+import { QueueService } from './services/queue';
+import { SSEManager } from './services/sse';
+import { createTranslationRouter } from './routes/translation';
+import type { TranslationResult } from './types';
+import {
+  propagation,
+  context,
+  SpanKind,
+  SpanStatusCode,
+} from '@opentelemetry/api';
+import { tracer, setSpanError } from './tracers';
 
 // Configuration
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -43,6 +50,11 @@ async function startServer(): Promise<void> {
 
     // Subscribe to translation results
     await queueService.subscribeToResults(async (result: TranslationResult) => {
+      const remoteCtx = propagation.extract(
+        context.active(),
+        result._traceContext ?? {},
+      );
+
       logger.info('Translation result received', {
         job_id: result.jobId,
         session_id: result.sessionId,
@@ -59,42 +71,62 @@ async function startServer(): Promise<void> {
         });
       }
 
-      try {
-        // Update session in Redis
-        await queueService!.updateJobStatus(
-          result.sessionId,
-          result.targetLanguage,
-          result.status === 'completed' ? 'completed' : 'error',
-          result.translatedText,
-          result.error,
-        );
+      await tracer.startActiveSpan(
+        'process_translation_result',
+        {
+          kind: SpanKind.CONSUMER,
+          attributes: {
+            'translation.job_id': result.jobId,
+            'translation.session_id': result.sessionId,
+            'translation.target_language': result.targetLanguage,
+            'translation.status': result.status,
+          },
+        },
+        remoteCtx,
+        async (resultSpan) => {
+          try {
+            // Update session in Redis
+            await queueService!.updateJobStatus(
+              result.sessionId,
+              result.targetLanguage,
+              result.status === 'completed' ? 'completed' : 'error',
+              result.translatedText,
+              result.error,
+            );
 
-        // Send SSE event
-        const eventType =
-          result.status === 'completed'
-            ? 'translation_complete'
-            : 'translation_error';
+            // Send SSE event
+            const eventType =
+              result.status === 'completed'
+                ? 'translation_complete'
+                : 'translation_error';
 
-        sseManager!.sendEvent(result.sessionId, eventType, result);
+            sseManager!.sendEvent(result.sessionId, eventType, result);
 
-        // Check if session is complete
-        const session = await queueService!.getSession(result.sessionId);
-        if (session && session.status === 'completed') {
-          sseManager!.sendEvent(result.sessionId, 'session_complete', {
-            sessionId: result.sessionId,
-            status: 'completed',
-          });
-          logger.info('Translation session completed', {
-            session_id: result.sessionId,
-            status: 'completed',
-          });
-        }
-      } catch (error) {
-        logger.error('Error processing translation result', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined,
-        });
-      }
+            // Check if session is complete
+            const session = await queueService!.getSession(result.sessionId);
+            if (session && session.status === 'completed') {
+              sseManager!.sendEvent(result.sessionId, 'session_complete', {
+                sessionId: result.sessionId,
+                status: 'completed',
+              });
+              logger.info('Translation session completed', {
+                session_id: result.sessionId,
+                status: 'completed',
+              });
+            }
+
+            resultSpan.setStatus({ code: SpanStatusCode.OK });
+          } catch (error) {
+            setSpanError(resultSpan, error);
+            logger.error('Error processing translation result', {
+              error: error instanceof Error ? error.message : 'Unknown error',
+              stack: error instanceof Error ? error.stack : undefined,
+            });
+          } finally {
+            resultSpan.end();
+          }
+        },
+      );
     });
 
     // Mount routes

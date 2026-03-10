@@ -33,6 +33,12 @@ def handle_shutdown(signum: int, frame) -> None:
     shutdown_flag = True
 
 
+def inject_trace_context(result) -> None:
+    trace_context: dict = {}
+    propagate.inject(trace_context)
+    result["_traceContext"] = trace_context
+
+
 def main() -> None:
     """Main worker loop."""
     global shutdown_flag
@@ -126,6 +132,8 @@ def main() -> None:
                             "durationMs": 0,
                             "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
                         }
+
+                        inject_trace_context(result)
                         queue_consumer.publish_result(result)
                         continue
 
@@ -186,6 +194,7 @@ def main() -> None:
                         }
 
                     # Publish result
+                    inject_trace_context(result)
                     queue_consumer.publish_result(result)
 
             except KeyboardInterrupt:

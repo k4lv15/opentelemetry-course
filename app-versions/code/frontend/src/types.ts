@@ -17,6 +17,7 @@ export interface TranslationResult {
   durationMs: number;
   completedAt: string;
   error?: string;
+  _traceContext?: Record<string, string>;
 }
 
 export interface JobStatus {
