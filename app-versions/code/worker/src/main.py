@@ -11,6 +11,7 @@ from .config import Config
 from .queue import QueueConsumer
 from .translator import Translator
 from .instrumentation import setup_instrumentation
+from .metrics import jobs_total, translation_duration, active_jobs
 
 # Configure logging
 logging.basicConfig(
@@ -117,6 +118,10 @@ def main() -> None:
                         "translation.text_length": len(text) if text else 0,
                     },
                 ) as span:
+                    start_time = time.time()
+                    active_jobs.add(
+                        1, attributes={"translation.target_language": target_lang}
+                    )
                     # Validate target language
                     if target_lang not in config.supported_languages:
                         error_msg = f"Unsupported target language: {target_lang}"
@@ -133,6 +138,21 @@ def main() -> None:
                             "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
                         }
 
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        translation_duration.record(
+                            duration_ms,
+                            attributes={
+                                "translation.target_language": target_lang,
+                                "translation.status": result.get("status", "unknown"),
+                            },
+                        )
+                        jobs_total.add(
+                            1,
+                            attributes={
+                                "translation.target_language": target_lang,
+                                "translation.status": result.get("status", "unknown"),
+                            },
+                        )
                         inject_trace_context(result)
                         queue_consumer.publish_result(result)
                         continue
@@ -141,7 +161,6 @@ def main() -> None:
                     logger.info(
                         f"Processing job {job_id}: {source_lang} -> {target_lang}"
                     )
-                    start_time = time.time()
 
                     try:
                         # Simulate realistic API latency (0.5-2 seconds)
@@ -192,7 +211,25 @@ def main() -> None:
                             "durationMs": duration_ms,
                             "completedAt": datetime.now(timezone.utc).isoformat() + "Z",
                         }
+                    finally:
+                        active_jobs.add(
+                            -1, attributes={"translation.target_language": target_lang}
+                        )
 
+                    translation_duration.record(
+                        duration_ms,
+                        attributes={
+                            "translation.target_language": target_lang,
+                            "translation.status": result.get("status", "unknown"),
+                        },
+                    )
+                    jobs_total.add(
+                        1,
+                        attributes={
+                            "translation.target_language": target_lang,
+                            "translation.status": result.get("status", "unknown"),
+                        },
+                    )
                     # Publish result
                     inject_trace_context(result)
                     queue_consumer.publish_result(result)

@@ -92,11 +92,17 @@ with tracer.start_as_current_span("process_translation_job", ...) as span:
 Changes are picked up by hot-reload. Generate traffic, then verify in Prometheus at http://localhost:9090:
 
 ```promql
-rate(translation_jobs_total{service_name="translation-worker"}[2m])
+rate(translation_jobs_total{exported_job="translation-worker"}[2m])
 ```
 
 ```promql
-histogram_quantile(0.95, rate(translation_duration_bucket{service_name="translation-worker"}[5m]))
+histogram_quantile(0.95, rate(translation_duration_seconds_bucket{exported_job="translation-worker"}[5m]))
+```
+
+If using `ms` as the unit in the metric definition:
+
+```promql
+histogram_quantile(0.95, rate(translation_duration_milliseconds_bucket{exported_job="translation-worker"}[5m]))
 ```
 
 ### 🤖 AI Checkpoints
