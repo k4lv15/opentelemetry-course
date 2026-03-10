@@ -15,7 +15,20 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
-
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.81.0-alpine
+    container_name: redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - app
+      - observability
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
   frontend:
     container_name: frontend
     ports:
