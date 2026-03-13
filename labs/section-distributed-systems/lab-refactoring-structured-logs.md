@@ -1,7 +1,5 @@
 # Lab: Refactoring - Structured Logging in the Worker
 
-**Duration:** 15 minutes
-
 ### 🎯 Lab Goal
 
 Refactor the worker's logging from plain-text interpolated strings to structured JSON logging — matching the approach already used in the frontend. Use your AI assistant to perform the refactoring.

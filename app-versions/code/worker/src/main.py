@@ -8,17 +8,11 @@ from opentelemetry import trace, propagate
 from opentelemetry.trace import SpanKind, StatusCode
 from typing import Optional
 from .config import Config
+from .logger import setup_logging
 from .queue import QueueConsumer
 from .translator import Translator
 from .instrumentation import setup_instrumentation
 from .metrics import jobs_total, translation_duration, active_jobs
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -30,7 +24,7 @@ shutdown_flag = False
 def handle_shutdown(signum: int, frame) -> None:
     """Handle shutdown signals gracefully."""
     global shutdown_flag
-    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+    logger.info("Received shutdown signal", extra={"signal": signum})
     shutdown_flag = True
 
 
@@ -48,17 +42,15 @@ def main() -> None:
     signal.signal(signal.SIGTERM, handle_shutdown)
     signal.signal(signal.SIGINT, handle_shutdown)
 
-    setup_instrumentation()
-
     # Load configuration
     config = Config.from_env()
 
-    # Set log level
-    logging.getLogger().setLevel(config.log_level)
+    setup_logging(config.log_level)
+    setup_instrumentation()
 
     logger.info("Starting translation worker")
-    logger.info(f"Redis: {config.redis_host}:{config.redis_port}")
-    logger.info(f"Supported languages: {', '.join(config.supported_languages)}")
+    logger.info("Redis connection config", extra={"redis_host": config.redis_host, "redis_port": config.redis_port})
+    logger.info("Supported languages", extra={"languages": config.supported_languages})
 
     # Initialize components
     queue_consumer: Optional[QueueConsumer] = None
@@ -97,7 +89,7 @@ def main() -> None:
                 target_lang = job.get("targetLanguage", "")
 
                 if not all([job_id, session_id, text, target_lang]):
-                    logger.error(f"Invalid job data: {job}")
+                    logger.error("Invalid job data received", extra={"job": job})
                     continue
 
                 # Extract remote trace context from the job payload.
@@ -126,7 +118,7 @@ def main() -> None:
                     if target_lang not in config.supported_languages:
                         error_msg = f"Unsupported target language: {target_lang}"
                         span.set_status(trace.Status(StatusCode.ERROR, error_msg))
-                        logger.error(error_msg)
+                        logger.error("Unsupported target language", extra={"target_language": target_lang})
 
                         result = {
                             "jobId": job_id,
@@ -159,13 +151,14 @@ def main() -> None:
 
                     # Translate
                     logger.info(
-                        f"Processing job {job_id}: {source_lang} -> {target_lang}"
+                        "Processing translation job",
+                        extra={"job_id": job_id, "source_language": source_lang, "target_language": target_lang},
                     )
 
                     try:
                         # Simulate realistic API latency (0.5-2 seconds)
                         delay = random.uniform(0.5, 2.0)
-                        logger.debug(f"Simulating {delay:.2f}s translation latency")
+                        logger.debug("Simulating translation latency", extra={"delay_seconds": round(delay, 2)})
                         time.sleep(delay)
 
                         # Ensure text is not None (already validated above)
@@ -188,7 +181,8 @@ def main() -> None:
                         }
 
                         logger.info(
-                            f"Job {job_id} completed successfully in {duration_ms}ms"
+                            "Translation job completed",
+                            extra={"job_id": job_id, "duration_ms": duration_ms},
                         )
 
                     except Exception as e:
@@ -196,7 +190,8 @@ def main() -> None:
                         error_msg = str(e)
 
                         logger.error(
-                            f"Translation failed for job {job_id}: {error_msg}"
+                            "Translation failed",
+                            extra={"job_id": job_id, "error": error_msg},
                         )
 
                         span.record_exception(e)
@@ -238,14 +233,14 @@ def main() -> None:
                 logger.info("Received keyboard interrupt")
                 break
             except Exception as e:
-                logger.error(f"Error processing job: {e}", exc_info=True)
+                logger.error("Error processing job", extra={"error": str(e)}, exc_info=True)
                 # Continue processing next job
                 time.sleep(1)
 
         logger.info("Worker shutting down...")
 
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
+        logger.error("Fatal error", extra={"error": str(e)}, exc_info=True)
         sys.exit(1)
 
     finally:
@@ -254,7 +249,7 @@ def main() -> None:
             try:
                 queue_consumer.disconnect()
             except Exception as e:
-                logger.error(f"Error disconnecting from Redis: {e}")
+                logger.error("Error disconnecting from Redis", extra={"error": str(e)})
 
         logger.info("Worker stopped")
 
