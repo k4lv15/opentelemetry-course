@@ -15,13 +15,11 @@ spec:
       containers:
         - name: grafana
           image: grafana/grafana:12.3
-          env:
-            - name: GF_AUTH_ANONYMOUS_ENABLED
-              value: 'true'
-            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: 'Admin'
-            - name: GF_SECURITY_ADMIN_PASSWORD
-              value: 'admin'
+          envFrom:
+            - configMapRef:
+                name: grafana-env-config
+            - secretRef:
+                name: grafana-admin-credentials
           ports:
             - containerPort: 3000
           resources:

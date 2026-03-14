@@ -28,3 +28,12 @@ configMapGenerator:
   - name: grafana-datasources
     files:
       - configs/grafana-datasources.yaml
+  - name: grafana-env-config
+    literals:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+
+secretGenerator:
+  - name: grafana-admin-credentials
+    envs:
+      - configs/grafana-admin-credentials.env
