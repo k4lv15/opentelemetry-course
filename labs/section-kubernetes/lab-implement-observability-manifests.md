@@ -98,6 +98,7 @@ spec:
           ports:
             - containerPort: 4317
             - containerPort: 4318
+            - containerPort: 8888
             - containerPort: 8889
           volumeMounts:
             - name: config
@@ -122,7 +123,10 @@ spec:
     - name: http
       port: 4318
       targetPort: 4318
-    - name: prometheus
+    - name: internal-metrics
+      port: 8888
+      targetPort: 8888
+    - name: metrics
       port: 8889
       targetPort: 8889
 ```
