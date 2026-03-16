@@ -7,3 +7,4 @@ This bonus section covers deploying the fully instrumented translation applicati
 3. [Lab: Set Up Kustomize](lab-setup-kustomize.md)
 4. [Lab: Validate the Kubernetes Manifests](lab-explore-manifests.md)
 5. [Lab: Deploy the Application to Kubernetes](lab-k8s-deploy.md)
+6. [Lab: Verify Telemetry in Kubernetes](lab-verify-telemetry.md)
