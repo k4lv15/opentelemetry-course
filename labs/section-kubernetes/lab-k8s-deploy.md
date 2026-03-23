@@ -111,6 +111,16 @@ kubectl -n observability port-forward svc/grafana 3000:3000
 kubectl -n observability port-forward svc/prometheus 9090:9090
 ```
 
+> **Minikube users:** use `minikube service` instead. Run each command in a separate terminal — it will print the local URL with a minikube-assigned port:
+>
+> ```bash
+> minikube service frontend -n app --url
+> minikube service grafana -n observability --url
+> minikube service prometheus -n observability --url
+> ```
+>
+> Use the printed URLs in place of `http://localhost:3001`, `http://localhost:3000`, and `http://localhost:9090` in the steps below.
+
 **6. Generate translation traffic**
 
 ```bash
