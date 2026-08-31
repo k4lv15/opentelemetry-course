@@ -1,0 +1,13 @@
+I have just set up Loki via docker compose (see k4lv15_implementations/compose folder.)
+I want to validate that Loki can receive, process and store logs. For that I would want
+to have a bash script (I'm running on Ubuntu), it should use curl or equivalent available
+on my system.
+
+Desired outcome:
+- A script that will send some log data to loki and confirms that those are stored.
+- A script that cleans up the test data from Loki
+- Few PromQL queries to check Loki metrics on Prometheus
+
+Rules:
+- Don't overcomplicate the script, be consise.
+- Please document instructions and commands as I'm a beginner in Loki and Prometheus
