@@ -1,12 +1,22 @@
 # Development Environment
-# Usage: docker compose -f compose.dev.yaml up
-
+# Usage: docker compose -f compose.dev.yaml up --build
+#
+# Uses 'extends' to inherit service definitions from compose.app.yaml
+# and override them with development-specific settings
 include:
+  - compose.networks.yaml
   - compose.observability.yaml
-  - compose.app.yaml
 
 services:
+  redis:
+    extends:
+      file: compose.app.yaml
+      service: redis
+
   frontend:
+    extends:
+      file: compose.app.yaml
+      service: frontend
     build:
       context: ../../app-versions/code/frontend
       dockerfile: Dockerfile.dev
@@ -21,6 +31,9 @@ services:
     command: npm run dev
 
   worker:
+    extends:
+      file: compose.app.yaml
+      service: worker
     build:
       context: ../../app-versions/code/worker
       dockerfile: Dockerfile.dev
@@ -36,11 +49,3 @@ services:
 
 volumes:
   worker-models:
-
-networks:
-  observability:
-    driver: bridge
-    name: observability
-  app:
-    driver: bridge
-    name: app

@@ -1,0 +1,9 @@
+# Network definitions for all compose configurations
+# Include this file when using multiple compose files
+networks:
+  observability:
+    driver: bridge
+    name: observability
+  app:
+    driver: bridge
+    name: app

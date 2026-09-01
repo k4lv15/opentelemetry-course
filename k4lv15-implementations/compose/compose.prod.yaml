@@ -1,21 +1,27 @@
 # Production Environment
 # Usage: docker compose -f compose.prod.yaml up
+#
+# Uses 'extends' to inherit service definitions from compose.app.yaml
+# and add production-specific image references
 
 include:
+  - compose.networks.yaml
   - compose.observability.yaml
-  - compose.app.yaml
 
 services:
+  redis:
+    extends:
+      file: compose.app.yaml
+      service: redis
+
   frontend:
+    extends:
+      file: compose.app.yaml
+      service: frontend
     image: lmacademy/web-translator-frontend:v1.1.0
 
   worker:
+    extends:
+      file: compose.app.yaml
+      service: worker
     image: lmacademy/web-translator-worker:v1.1.0
-
-networks:
-  observability:
-    driver: bridge
-    name: observability
-  app:
-    driver: bridge
-    name: app
